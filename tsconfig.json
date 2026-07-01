@@ -24,7 +24,3 @@
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }
-'''
-
-with open(f"{output_dir}/tsconfig.json", "w") as f:
-    f.write(tsconfig)
