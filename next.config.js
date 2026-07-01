@@ -6,7 +6,3 @@ const nextConfig = {
 };
 
 module.exports = nextConfig;
-'''
-
-with open(f"{output_dir}/next.config.js", "w") as f:
-    f.write(next_config)
