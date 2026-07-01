@@ -1,7 +1,16 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, Activity } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  ArrowUpRight,
+  ArrowDownRight,
+  Activity,
+  RefreshCw,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AreaChart,
@@ -16,46 +25,129 @@ import {
   Cell,
 } from "recharts";
 
-const portfolioData = [
-  { name: "Jan", value: 2100000 },
-  { name: "Feb", value: 2350000 },
-  { name: "Mar", value: 2280000 },
-  { name: "Apr", value: 2640000 },
-  { name: "May", value: 2510000 },
-  { name: "Jun", value: 2847392 },
-];
+const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
+const TRACKED_COINS = ["bitcoin", "ethereum", "solana", "tether", "usd-coin"];
+const COLORS = ["#d4af37", "#f0d96b", "#b8962e", "#967624", "#70561b"];
 
-const allocationData = [
-  { name: "BTC", value: 59.1, color: "#d4af37" },
-  { name: "ETH", value: 16.6, color: "#f0d96b" },
-  { name: "SOL", value: 6.6, color: "#b8962e" },
-  { name: "USDC", value: 5.3, color: "#967624" },
-  { name: "USDT", value: 12.4, color: "#70561b" },
-];
+interface CoinPrice {
+  id: string;
+  symbol: string;
+  name: string;
+  current_price: number;
+  price_change_percentage_24h: number;
+  market_cap: number;
+  total_volume: number;
+  image: string;
+}
 
-const assets = [
-  { name: "Bitcoin", symbol: "BTC", price: "$66,890", change: "+5.2%", balance: "2.518 BTC", value: "$168,420", positive: true },
-  { name: "Ethereum", symbol: "ETH", price: "$3,742", change: "+8.1%", balance: "12.628 ETH", value: "$47,250", positive: true },
-  { name: "Solana", symbol: "SOL", price: "$150.00", change: "+15.3%", balance: "1,250 SOL", value: "$187,500", positive: true },
-  { name: "Tether", symbol: "USDT", price: "$1.00", change: "0.0%", balance: "483,000 USDT", value: "$483,000", positive: true },
-  { name: "USDC", symbol: "USDC", price: "$1.00", change: "0.0%", balance: "152,000 USDC", value: "$152,000", positive: true },
-];
+interface GlobalData {
+  total_market_cap: { usd: number };
+  total_volume: { usd: number };
+  market_cap_percentage: { btc: number; eth: number };
+  active_cryptocurrencies: number;
+}
 
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
+function formatCurrency(value: number): string {
+  if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
+  if (value >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
+  return `$${value.toFixed(2)}`;
+}
+
+function formatPrice(price: number): string {
+  if (price >= 1) return `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${price.toFixed(6)}`;
+}
+
+async function getCoinsByIds(ids: string[]): Promise<CoinPrice[]> {
+  const res = await fetch(
+    `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=${ids.join(",")}&sparkline=true&price_change_percentage=24h`
+  );
+  if (!res.ok) throw new Error("Failed to fetch coin data");
+  return res.json();
+}
+
+async function getGlobalData(): Promise<{ data: GlobalData }> {
+  const res = await fetch(`${COINGECKO_BASE}/global`);
+  if (!res.ok) throw new Error("Failed to fetch global data");
+  return res.json();
+}
+
+async function getCoinHistory(coinId: string, days: number = 30): Promise<{ prices: [number, number][] }> {
+  const res = await fetch(
+    `${COINGECKO_BASE}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`
+  );
+  if (!res.ok) throw new Error("Failed to fetch history");
+  return res.json();
+}
+
+export default function DashboardPage() {
+  const [coins, setCoins] = useState<CoinPrice[]>([]);
+  const [globalData, setGlobalData] = useState<GlobalData | null>(null);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+
+  const balances: Record<string, number> = {
+    bitcoin: 2.518,
+    ethereum: 12.628,
+    solana: 1250,
+    tether: 483000,
+    "usd-coin": 152000,
+  };
+
+  async function fetchAllData() {
+    try {
+      const [coinsData, global, btcHistory] = await Promise.all([
+        getCoinsByIds(TRACKED_COINS),
+        getGlobalData(),
+        getCoinHistory("bitcoin", 30),
+      ]);
+
+      setCoins(coinsData);
+      setGlobalData(global.data);
+
+      const history = btcHistory.prices.map(([timestamp, price]: [number, number]) => ({
+        date: new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        price,
+      }));
+      setChartData(history);
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error("Failed to fetch data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchAllData();
+    const interval = setInterval(fetchAllData, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const totalBalance = coins.reduce((sum, coin) => {
+    return sum + coin.current_price * (balances[coin.id] || 0);
+  }, 0);
+
+  const allocationData = coins.map((coin) => ({
+    name: coin.symbol.toUpperCase(),
+    value: coin.market_cap,
+    color: COLORS[coins.indexOf(coin) % COLORS.length],
+  }));
+
+  if (loading) {
     return (
-      <div className="rounded-lg border border-gold-500/30 bg-background/95 p-3 shadow-xl backdrop-blur">
-        <p className="text-sm font-medium text-gold-400">{payload[0].payload.name}</p>
-        <p className="text-lg font-bold text-white">
-          ${payload[0].value.toLocaleString()}
-        </p>
+      <div className="min-h-screen pt-24 pb-12 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="h-8 w-8 text-gold-400 animate-spin" />
+          <span className="text-muted-foreground">Loading live market data...</span>
+        </div>
       </div>
     );
   }
-  return null;
-};
 
-export default function DashboardPage() {
   return (
     <div className="min-h-screen pt-24 pb-12">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -66,102 +158,111 @@ export default function DashboardPage() {
         >
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-              <p className="text-muted-foreground mt-1">Overview of your community treasury</p>
+              <h1 className="text-3xl font-bold text-white">Live Dashboard</h1>
+              <p className="text-muted-foreground mt-1">
+                Real-time market data • Updated {lastUpdated.toLocaleTimeString()}
+              </p>
             </div>
             <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-400 border border-emerald-500/20">
-              <Activity className="h-4 w-4" />
-              Live Data
+              <Activity className="h-4 w-4 animate-pulse" />
+              Live
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-            <Card className="border-gold-900/30 bg-card/50">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Balance</CardTitle>
-                <Wallet className="h-4 w-4 text-gold-400" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">$2,847,392.50</div>
-                <div className="flex items-center text-xs text-emerald-400 mt-1">
-                  <ArrowUpRight className="h-3 w-3 mr-1" />
-                  +12.5% from last month
-                </div>
-              </CardContent>
-            </Card>
+          {globalData && (
+            <div className="grid gap-4 md:grid-cols-4 mb-8">
+              <Card className="border-gold-900/30 bg-card/50">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Balance</CardTitle>
+                  <Wallet className="h-4 w-4 text-gold-400" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-white">{formatCurrency(totalBalance)}</div>
+                  <div className="flex items-center text-xs text-emerald-400 mt-1">
+                    <ArrowUpRight className="h-3 w-3 mr-1" />
+                    Live Portfolio
+                  </div>
+                </CardContent>
+              </Card>
 
-            <Card className="border-gold-900/30 bg-card/50">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">24h Volume</CardTitle>
-                <Activity className="h-4 w-4 text-gold-400" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">$142,830</div>
-                <div className="flex items-center text-xs text-emerald-400 mt-1">
-                  <ArrowUpRight className="h-3 w-3 mr-1" />
-                  +8.2% from yesterday
-                </div>
-              </CardContent>
-            </Card>
+              <Card className="border-gold-900/30 bg-card/50">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Global Market Cap</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-gold-400" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-white">
+                    {formatCurrency(globalData.total_market_cap.usd)}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">All cryptocurrencies</div>
+                </CardContent>
+              </Card>
 
-            <Card className="border-gold-900/30 bg-card/50">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Active Proposals</CardTitle>
-                <TrendingUp className="h-4 w-4 text-gold-400" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">3</div>
-                <div className="flex items-center text-xs text-muted-foreground mt-1">
-                  2 pending vote
-                </div>
-              </CardContent>
-            </Card>
+              <Card className="border-gold-900/30 bg-card/50">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">24h Volume</CardTitle>
+                  <Activity className="h-4 w-4 text-gold-400" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-white">
+                    {formatCurrency(globalData.total_volume.usd)}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Global trading volume</div>
+                </CardContent>
+              </Card>
 
-            <Card className="border-gold-900/30 bg-card/50">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Members</CardTitle>
-                <TrendingDown className="h-4 w-4 text-gold-400" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">1,247</div>
-                <div className="flex items-center text-xs text-emerald-400 mt-1">
-                  <ArrowUpRight className="h-3 w-3 mr-1" />
-                  +24 new this week
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+              <Card className="border-gold-900/30 bg-card/50">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Active Coins</CardTitle>
+                  <TrendingDown className="h-4 w-4 text-gold-400" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-white">
+                    {globalData.active_cryptocurrencies.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Tracked by CoinGecko</div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           <div className="grid gap-4 lg:grid-cols-3 mb-8">
             <Card className="lg:col-span-2 border-gold-900/30 bg-card/50">
               <CardHeader>
-                <CardTitle className="text-white">Portfolio Performance</CardTitle>
+                <CardTitle className="text-white">Bitcoin Price (30 Days)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={portfolioData}>
+                    <AreaChart data={chartData}>
                       <defs>
-                        <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                        <linearGradient id="btcGradient" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#d4af37" stopOpacity={0.3} />
                           <stop offset="95%" stopColor="#d4af37" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(45, 50%, 15%)" />
-                      <XAxis dataKey="name" stroke="hsl(0, 0%, 60%)" fontSize={12} />
+                      <XAxis dataKey="date" stroke="hsl(0, 0%, 60%)" fontSize={12} />
                       <YAxis
                         stroke="hsl(0, 0%, 60%)"
                         fontSize={12}
-                        tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`}
+                        tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
                       />
-                      <Tooltip content={<CustomTooltip />} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "hsl(0, 0%, 6%)",
+                          border: "1px solid hsl(45, 50%, 20%)",
+                          borderRadius: "8px",
+                        }}
+                        formatter={(value: number) => [formatPrice(value), "Price"]}
+                      />
                       <Area
                         type="monotone"
-                        dataKey="value"
+                        dataKey="price"
                         stroke="#d4af37"
                         strokeWidth={2}
                         fillOpacity={1}
-                        fill="url(#colorValue)"
+                        fill="url(#btcGradient)"
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -171,7 +272,7 @@ export default function DashboardPage() {
 
             <Card className="border-gold-900/30 bg-card/50">
               <CardHeader>
-                <CardTitle className="text-white">Asset Allocation</CardTitle>
+                <CardTitle className="text-white">Market Cap Allocation</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-[250px]">
@@ -196,6 +297,7 @@ export default function DashboardPage() {
                           border: "1px solid hsl(45, 50%, 20%)",
                           borderRadius: "8px",
                         }}
+                        formatter={(value: number) => formatCurrency(value)}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -207,7 +309,7 @@ export default function DashboardPage() {
                         <div className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
                         <span className="text-muted-foreground">{item.name}</span>
                       </div>
-                      <span className="text-white font-medium">{item.value}%</span>
+                      <span className="text-white font-medium">{formatCurrency(item.value)}</span>
                     </div>
                   ))}
                 </div>
@@ -217,7 +319,7 @@ export default function DashboardPage() {
 
           <Card className="border-gold-900/30 bg-card/50">
             <CardHeader>
-              <CardTitle className="text-white">Holdings</CardTitle>
+              <CardTitle className="text-white">Your Holdings</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -232,29 +334,57 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {assets.map((asset) => (
-                      <tr key={asset.symbol} className="border-b border-gold-900/20 hover:bg-gold-500/5 transition-colors">
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-gold-500/20 flex items-center justify-center text-xs font-bold text-gold-400">
-                              {asset.symbol[0]}
+                    {coins.map((coin) => {
+                      const balance = balances[coin.id] || 0;
+                      const value = coin.current_price * balance;
+                      const change = coin.price_change_percentage_24h || 0;
+
+                      return (
+                        <tr
+                          key={coin.id}
+                          className="border-b border-gold-900/20 hover:bg-gold-500/5 transition-colors"
+                        >
+                          <td className="py-4 px-4">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={coin.image}
+                                alt={coin.name}
+                                className="h-8 w-8 rounded-full"
+                              />
+                              <div>
+                                <div className="text-sm font-medium text-white">{coin.name}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {coin.symbol.toUpperCase()}
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <div className="text-sm font-medium text-white">{asset.name}</div>
-                              <div className="text-xs text-muted-foreground">{asset.symbol}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 text-right text-sm text-white">{asset.price}</td>
-                        <td className="py-4 px-4 text-right">
-                          <span className={`text-sm ${asset.positive ? "text-emerald-400" : "text-red-400"}`}>
-                            {asset.change}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4 text-right text-sm text-white">{asset.balance}</td>
-                        <td className="py-4 px-4 text-right text-sm font-medium text-white">{asset.value}</td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="py-4 px-4 text-right text-sm text-white">
+                            {formatPrice(coin.current_price)}
+                          </td>
+                          <td className="py-4 px-4 text-right">
+                            <span
+                              className={`text-sm flex items-center justify-end gap-1 ${
+                                change >= 0 ? "text-emerald-400" : "text-red-400"
+                              }`}
+                            >
+                              {change >= 0 ? (
+                                <ArrowUpRight className="h-3 w-3" />
+                              ) : (
+                                <ArrowDownRight className="h-3 w-3" />
+                              )}
+                              {Math.abs(change).toFixed(2)}%
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 text-right text-sm text-white">
+                            {balance.toLocaleString()} {coin.symbol.toUpperCase()}
+                          </td>
+                          <td className="py-4 px-4 text-right text-sm font-medium text-white">
+                            {formatCurrency(value)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
