@@ -11,6 +11,7 @@ import {
   Activity,
   RefreshCw,
 } from "lucide-react";
+import { useAccount, useBalance } from "wagmi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AreaChart,
@@ -60,6 +61,13 @@ function formatPrice(price: number): string {
   return `$${price.toFixed(6)}`;
 }
 
+function formatBalance(value: bigint, decimals: number = 18): string {
+  const num = Number(value) / 10 ** decimals;
+  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
+  if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`;
+  return num.toFixed(4);
+}
+
 async function getCoinsByIds(ids: string[]): Promise<CoinPrice[]> {
   const res = await fetch(
     `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=${ids.join(",")}&sparkline=true&price_change_percentage=24h`
@@ -83,15 +91,19 @@ async function getCoinHistory(coinId: string, days: number = 30): Promise<{ pric
 }
 
 export default function DashboardPage() {
+  const { address, isConnected } = useAccount();
+  const { data: ethBalance } = useBalance({ address });
+  
   const [coins, setCoins] = useState<CoinPrice[]>([]);
   const [globalData, setGlobalData] = useState<GlobalData | null>(null);
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-  const balances: Record<string, number> = {
+  // Mock balances for demo (replace with real multi-chain balance fetching)
+  const mockBalances: Record<string, number> = {
     bitcoin: 2.518,
-    ethereum: 12.628,
+    ethereum: ethBalance ? Number(ethBalance.value) / 1e18 : 12.628,
     solana: 1250,
     tether: 483000,
     "usd-coin": 152000,
@@ -127,8 +139,22 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Recalculate when ETH balance changes
+  useEffect(() => {
+    if (ethBalance) {
+      setCoins((prev) => prev.map((coin) => 
+        coin.id === "ethereum" 
+          ? { ...coin, mockBalance: Number(ethBalance.value) / 1e18 }
+          : coin
+      ));
+    }
+  }, [ethBalance]);
+
   const totalBalance = coins.reduce((sum, coin) => {
-    return sum + coin.current_price * (balances[coin.id] || 0);
+    const balance = coin.id === "ethereum" && ethBalance 
+      ? Number(ethBalance.value) / 1e18 
+      : mockBalances[coin.id] || 0;
+    return sum + coin.current_price * balance;
   }, 0);
 
   const allocationData = coins.map((coin) => ({
@@ -156,6 +182,7 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
+          {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-3xl font-bold text-white">Live Dashboard</h1>
@@ -163,12 +190,56 @@ export default function DashboardPage() {
                 Real-time market data • Updated {lastUpdated.toLocaleTimeString()}
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-400 border border-emerald-500/20">
-              <Activity className="h-4 w-4 animate-pulse" />
-              Live
+            <div className="flex items-center gap-2">
+              {isConnected && address && (
+                <span className="rounded-full bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-400 border border-gold-500/20">
+                  {address.slice(0, 6)}...{address.slice(-4)}
+                </span>
+              )}
+              <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-400 border border-emerald-500/20">
+                <Activity className="h-4 w-4 animate-pulse" />
+                Live
+              </div>
             </div>
           </div>
 
+          {/* Wallet Status Banner */}
+          {isConnected && ethBalance && (
+            <Card className="border-gold-900/30 bg-gold-500/5 mb-8">
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Wallet className="h-5 w-5 text-gold-400" />
+                    <div>
+                      <div className="text-sm font-medium text-white">Connected Wallet</div>
+                      <div className="text-xs text-muted-foreground">
+                        ETH Balance: {formatBalance(ethBalance.value, ethBalance.decimals)} ETH
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-medium text-gold-400">
+                      {formatPrice(Number(ethBalance.value) / 1e18 * (coins.find(c => c.id === "ethereum")?.current_price || 0))}
+                    </div>
+                    <div className="text-xs text-muted-foreground">ETH Value</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {!isConnected && (
+            <Card className="border-gold-900/30 bg-card/50 mb-8">
+              <CardContent className="py-6 text-center">
+                <Wallet className="h-8 w-8 text-gold-400 mx-auto mb-2" />
+                <p className="text-muted-foreground">
+                  Connect your wallet to see real balances and portfolio value
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Global Stats */}
           {globalData && (
             <div className="grid gap-4 md:grid-cols-4 mb-8">
               <Card className="border-gold-900/30 bg-card/50">
@@ -180,7 +251,7 @@ export default function DashboardPage() {
                   <div className="text-2xl font-bold text-white">{formatCurrency(totalBalance)}</div>
                   <div className="flex items-center text-xs text-emerald-400 mt-1">
                     <ArrowUpRight className="h-3 w-3 mr-1" />
-                    Live Portfolio
+                    {isConnected ? "Live + Wallet" : "Demo Portfolio"}
                   </div>
                 </CardContent>
               </Card>
@@ -226,6 +297,7 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {/* Charts */}
           <div className="grid gap-4 lg:grid-cols-3 mb-8">
             <Card className="lg:col-span-2 border-gold-900/30 bg-card/50">
               <CardHeader>
@@ -317,6 +389,7 @@ export default function DashboardPage() {
             </Card>
           </div>
 
+          {/* Holdings Table */}
           <Card className="border-gold-900/30 bg-card/50">
             <CardHeader>
               <CardTitle className="text-white">Your Holdings</CardTitle>
@@ -335,9 +408,12 @@ export default function DashboardPage() {
                   </thead>
                   <tbody>
                     {coins.map((coin) => {
-                      const balance = balances[coin.id] || 0;
+                      const balance = coin.id === "ethereum" && ethBalance 
+                        ? Number(ethBalance.value) / 1e18 
+                        : mockBalances[coin.id] || 0;
                       const value = coin.current_price * balance;
                       const change = coin.price_change_percentage_24h || 0;
+                      const isRealBalance = coin.id === "ethereum" && isConnected;
 
                       return (
                         <tr
@@ -355,6 +431,9 @@ export default function DashboardPage() {
                                 <div className="text-sm font-medium text-white">{coin.name}</div>
                                 <div className="text-xs text-muted-foreground">
                                   {coin.symbol.toUpperCase()}
+                                  {isRealBalance && (
+                                    <span className="ml-2 text-emerald-400 text-[10px]">● LIVE</span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -377,7 +456,10 @@ export default function DashboardPage() {
                             </span>
                           </td>
                           <td className="py-4 px-4 text-right text-sm text-white">
-                            {balance.toLocaleString()} {coin.symbol.toUpperCase()}
+                            <span className={isRealBalance ? "text-emerald-400" : ""}>
+                              {balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                            </span>
+                            {" "}{coin.symbol.toUpperCase()}
                           </td>
                           <td className="py-4 px-4 text-right text-sm font-medium text-white">
                             {formatCurrency(value)}
