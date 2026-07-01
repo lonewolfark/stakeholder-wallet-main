@@ -75,7 +75,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Stats Grid */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
             <Card className="border-gold-900/30 bg-card/50">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -133,7 +132,6 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {/* Charts Row */}
           <div className="grid gap-4 lg:grid-cols-3 mb-8">
             <Card className="lg:col-span-2 border-gold-900/30 bg-card/50">
               <CardHeader>
@@ -217,7 +215,6 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {/* Assets Table */}
           <Card className="border-gold-900/30 bg-card/50">
             <CardHeader>
               <CardTitle className="text-white">Holdings</CardTitle>
