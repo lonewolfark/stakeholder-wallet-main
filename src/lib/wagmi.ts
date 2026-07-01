@@ -1,13 +1,19 @@
 import { createConfig, http } from "wagmi";
-import { mainnet, polygon, arbitrum, base } from "wagmi/chains";
+import { mainnet, polygon, arbitrum, base, optimism } from "wagmi/chains";
 import { injected, walletConnect } from "wagmi/connectors";
 
 export const config = createConfig({
-  chains: [mainnet, polygon, arbitrum, base],
+  chains: [mainnet, polygon, arbitrum, base, optimism],
   connectors: [
     injected({ target: "metaMask" }),
     walletConnect({
-      projectId: "18f0130201dc053e1300fdc8587cd1f1", // Get from cloud.walletconnect.com
+      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "",
+      metadata: {
+        name: "Stakeholder Wallet",
+        description: "Premium Community Treasury & Investment Platform",
+        url: "https://stakeholderwallet.com",
+        icons: ["https://stakeholderwallet.com/logo.png"],
+      },
     }),
   ],
   transports: {
@@ -15,5 +21,6 @@ export const config = createConfig({
     [polygon.id]: http(),
     [arbitrum.id]: http(),
     [base.id]: http(),
+    [optimism.id]: http(),
   },
 });
