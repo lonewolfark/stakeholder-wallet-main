@@ -2,24 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, X, Wallet } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Menu, X } from "lucide-react";
+import { ConnectWallet } from "@/components/connect-wallet";
 import Image from "next/image";
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState("");
-
-  const connectWallet = () => {
-    setIsConnected(true);
-    setAddress("0x1234...5678");
-  };
-
-  const disconnectWallet = () => {
-    setIsConnected(false);
-    setAddress("");
-  };
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-gold-900/30 bg-background/80 backdrop-blur-xl">
@@ -58,30 +46,8 @@ export function Navbar() {
           </Link>
         </div>
 
-        <div className="hidden items-center gap-4 md:flex">
-          {isConnected ? (
-            <div className="flex items-center gap-3">
-              <span className="rounded-full bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-400 border border-gold-500/20">
-                {address}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={disconnectWallet}
-                className="border-gold-500/30 text-gold-400 hover:bg-gold-500/10"
-              >
-                Disconnect
-              </Button>
-            </div>
-          ) : (
-            <Button
-              onClick={connectWallet}
-              className="bg-gradient-to-r from-gold-600 to-gold-400 text-black font-semibold hover:from-gold-500 hover:to-gold-300"
-            >
-              <Wallet className="mr-2 h-4 w-4" />
-              Connect Wallet
-            </Button>
-          )}
+        <div className="hidden md:flex">
+          <ConnectWallet />
         </div>
 
         {/* Mobile menu button */}
@@ -109,23 +75,9 @@ export function Navbar() {
             <Link href="/investments" className="text-sm font-medium text-muted-foreground" onClick={() => setIsOpen(false)}>
               Investments
             </Link>
-            {isConnected ? (
-              <Button
-                variant="outline"
-                onClick={() => { disconnectWallet(); setIsOpen(false); }}
-                className="border-gold-500/30 text-gold-400"
-              >
-                Disconnect {address}
-              </Button>
-            ) : (
-              <Button
-                onClick={() => { connectWallet(); setIsOpen(false); }}
-                className="bg-gradient-to-r from-gold-600 to-gold-400 text-black font-semibold"
-              >
-                <Wallet className="mr-2 h-4 w-4" />
-                Connect Wallet
-              </Button>
-            )}
+            <div className="pt-2">
+              <ConnectWallet />
+            </div>
           </div>
         </div>
       )}
