@@ -2,16 +2,24 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, X, Wallet, Shield } from "lucide-react";
+import { Menu, X, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
 import Image from "next/image";
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
-  const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
-  const { disconnect } = useDisconnect();
+  const [isConnected, setIsConnected] = useState(false);
+  const [address, setAddress] = useState("");
+
+  const connectWallet = () => {
+    setIsConnected(true);
+    setAddress("0x1234...5678");
+  };
+
+  const disconnectWallet = () => {
+    setIsConnected(false);
+    setAddress("");
+  };
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-gold-900/30 bg-background/80 backdrop-blur-xl">
@@ -54,12 +62,12 @@ export function Navbar() {
           {isConnected ? (
             <div className="flex items-center gap-3">
               <span className="rounded-full bg-gold-500/10 px-3 py-1 text-xs font-medium text-gold-400 border border-gold-500/20">
-                {address?.slice(0, 6)}...{address?.slice(-4)}
+                {address}
               </span>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => disconnect()}
+                onClick={disconnectWallet}
                 className="border-gold-500/30 text-gold-400 hover:bg-gold-500/10"
               >
                 Disconnect
@@ -67,7 +75,7 @@ export function Navbar() {
             </div>
           ) : (
             <Button
-              onClick={() => connect({ connector: connectors[0] })}
+              onClick={connectWallet}
               className="bg-gradient-to-r from-gold-600 to-gold-400 text-black font-semibold hover:from-gold-500 hover:to-gold-300"
             >
               <Wallet className="mr-2 h-4 w-4" />
@@ -104,14 +112,14 @@ export function Navbar() {
             {isConnected ? (
               <Button
                 variant="outline"
-                onClick={() => { disconnect(); setIsOpen(false); }}
+                onClick={() => { disconnectWallet(); setIsOpen(false); }}
                 className="border-gold-500/30 text-gold-400"
               >
-                Disconnect {address?.slice(0, 6)}...
+                Disconnect {address}
               </Button>
             ) : (
               <Button
-                onClick={() => { connect({ connector: connectors[0] }); setIsOpen(false); }}
+                onClick={() => { connectWallet(); setIsOpen(false); }}
                 className="bg-gradient-to-r from-gold-600 to-gold-400 text-black font-semibold"
               >
                 <Wallet className="mr-2 h-4 w-4" />
