@@ -26,7 +26,6 @@
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
   
-  /* Custom gold colors */
   --color-gold-50: #fdf9e7;
   --color-gold-100: #f9efc0;
   --color-gold-200: #f5e594;
@@ -66,4 +65,13 @@
     background-image: radial-gradient(circle at 50% 0%, hsl(45, 50%, 8%) 0%, hsl(0, 0%, 4%) 70%);
     min-height: 100vh;
   }
+}
+
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-scroll {
+  animation: scroll 30s linear infinite;
 }
