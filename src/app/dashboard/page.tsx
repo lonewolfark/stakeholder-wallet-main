@@ -10,6 +10,7 @@ import {
   ArrowDownRight,
   Activity,
   RefreshCw,
+  Coins,
 } from "lucide-react";
 import { useAccount, useBalance } from "wagmi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,8 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { useTokenBalances } from "@/hooks/useTokenBalances";
+import { TransactionHistory } from "@/components/transaction-history";
 
 const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
 const TRACKED_COINS = ["bitcoin", "ethereum", "solana", "tether", "usd-coin"];
@@ -61,13 +64,6 @@ function formatPrice(price: number): string {
   return `$${price.toFixed(6)}`;
 }
 
-function formatBalance(value: bigint, decimals: number = 18): string {
-  const num = Number(value) / 10 ** decimals;
-  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
-  if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`;
-  return num.toFixed(4);
-}
-
 async function getCoinsByIds(ids: string[]): Promise<CoinPrice[]> {
   const res = await fetch(
     `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=${ids.join(",")}&sparkline=true&price_change_percentage=24h`
@@ -91,8 +87,9 @@ async function getCoinHistory(coinId: string, days: number = 30): Promise<{ pric
 }
 
 export default function DashboardPage() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const { data: ethBalance } = useBalance({ address });
+  const { balances: tokenBalances, isLoading: tokensLoading } = useTokenBalances();
   
   const [coins, setCoins] = useState<CoinPrice[]>([]);
   const [globalData, setGlobalData] = useState<GlobalData | null>(null);
@@ -100,10 +97,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-  // Mock balances for demo (replace with real multi-chain balance fetching)
+  // Mock balances for non-ETH tokens
   const mockBalances: Record<string, number> = {
     bitcoin: 2.518,
-    ethereum: ethBalance ? Number(ethBalance.value) / 1e18 : 12.628,
     solana: 1250,
     tether: 483000,
     "usd-coin": 152000,
@@ -139,21 +135,20 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Recalculate when ETH balance changes
-  useEffect(() => {
-    if (ethBalance) {
-      setCoins((prev) => prev.map((coin) => 
-        coin.id === "ethereum" 
-          ? { ...coin, mockBalance: Number(ethBalance.value) / 1e18 }
-          : coin
-      ));
-    }
-  }, [ethBalance]);
-
+  // Calculate total balance including real ETH + real ERC20 tokens + mock data
   const totalBalance = coins.reduce((sum, coin) => {
-    const balance = coin.id === "ethereum" && ethBalance 
-      ? Number(ethBalance.value) / 1e18 
-      : mockBalances[coin.id] || 0;
+    let balance = 0;
+    
+    if (coin.id === "ethereum" && ethBalance) {
+      balance = Number(ethBalance.value) / 1e18;
+    } else if (coin.symbol.toLowerCase() === "usdt" && tokenBalances.find(t => t.symbol === "USDT")) {
+      balance = tokenBalances.find(t => t.symbol === "USDT")?.value || 0;
+    } else if (coin.symbol.toLowerCase() === "usdc" && tokenBalances.find(t => t.symbol === "USDC")) {
+      balance = tokenBalances.find(t => t.symbol === "USDC")?.value || 0;
+    } else {
+      balance = mockBalances[coin.id] || 0;
+    }
+    
     return sum + coin.current_price * balance;
   }, 0);
 
@@ -204,24 +199,29 @@ export default function DashboardPage() {
           </div>
 
           {/* Wallet Status Banner */}
-          {isConnected && ethBalance && (
+          {isConnected && (
             <Card className="border-gold-900/30 bg-gold-500/5 mb-8">
               <CardContent className="py-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-4">
                   <div className="flex items-center gap-3">
                     <Wallet className="h-5 w-5 text-gold-400" />
                     <div>
                       <div className="text-sm font-medium text-white">Connected Wallet</div>
                       <div className="text-xs text-muted-foreground">
-                        ETH Balance: {formatBalance(ethBalance.value, ethBalance.decimals)} ETH
+                        {ethBalance && (
+                          <span>ETH: {(Number(ethBalance.value) / 1e18).toFixed(4)} </span>
+                        )}
+                        {tokenBalances.length > 0 && (
+                          <span>• {tokenBalances.length} tokens</span>
+                        )}
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-medium text-gold-400">
-                      {formatPrice(Number(ethBalance.value) / 1e18 * (coins.find(c => c.id === "ethereum")?.current_price || 0))}
+                      {formatCurrency(totalBalance)}
                     </div>
-                    <div className="text-xs text-muted-foreground">ETH Value</div>
+                    <div className="text-xs text-muted-foreground">Total Portfolio Value</div>
                   </div>
                 </div>
               </CardContent>
@@ -295,6 +295,37 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {/* Token Balances (if connected) */}
+          {isConnected && tokenBalances.length > 0 && (
+            <Card className="border-gold-900/30 bg-card/50 mb-8">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Coins className="h-5 w-5 text-gold-400" />
+                  Token Balances
+                </CardTitle>
+                {tokensLoading && <RefreshCw className="h-4 w-4 text-gold-400 animate-spin" />}
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {tokenBalances.map((token) => (
+                    <div
+                      key={token.symbol}
+                      className="rounded-xl bg-background/40 border border-gold-900/20 p-4"
+                    >
+                      <div className="text-xs text-muted-foreground mb-1">{token.symbol}</div>
+                      <div className="text-lg font-bold text-white">
+                        {parseFloat(token.balance).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                      </div>
+                      <div className="text-xs text-gold-400 mt-1">
+                        {formatCurrency(token.value * (coins.find(c => c.symbol === token.symbol.toLowerCase())?.current_price || 1))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Charts */}
@@ -390,7 +421,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Holdings Table */}
-          <Card className="border-gold-900/30 bg-card/50">
+          <Card className="border-gold-900/30 bg-card/50 mb-8">
             <CardHeader>
               <CardTitle className="text-white">Your Holdings</CardTitle>
             </CardHeader>
@@ -408,12 +439,34 @@ export default function DashboardPage() {
                   </thead>
                   <tbody>
                     {coins.map((coin) => {
-                      const balance = coin.id === "ethereum" && ethBalance 
-                        ? Number(ethBalance.value) / 1e18 
-                        : mockBalances[coin.id] || 0;
+                      let balance = 0;
+                      let isRealBalance = false;
+
+                      if (coin.id === "ethereum" && ethBalance) {
+                        balance = Number(ethBalance.value) / 1e18;
+                        isRealBalance = true;
+                      } else if (coin.symbol.toLowerCase() === "usdt") {
+                        const token = tokenBalances.find(t => t.symbol === "USDT");
+                        if (token) {
+                          balance = token.value;
+                          isRealBalance = true;
+                        } else {
+                          balance = mockBalances[coin.id] || 0;
+                        }
+                      } else if (coin.symbol.toLowerCase() === "usdc") {
+                        const token = tokenBalances.find(t => t.symbol === "USDC");
+                        if (token) {
+                          balance = token.value;
+                          isRealBalance = true;
+                        } else {
+                          balance = mockBalances[coin.id] || 0;
+                        }
+                      } else {
+                        balance = mockBalances[coin.id] || 0;
+                      }
+
                       const value = coin.current_price * balance;
                       const change = coin.price_change_percentage_24h || 0;
-                      const isRealBalance = coin.id === "ethereum" && isConnected;
 
                       return (
                         <tr
@@ -472,6 +525,9 @@ export default function DashboardPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Transaction History */}
+          <TransactionHistory />
         </motion.div>
       </div>
     </div>
